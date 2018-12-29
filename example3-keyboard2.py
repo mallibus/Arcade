@@ -18,12 +18,16 @@ import os
 SPRITE_SCALING_PLAYER = 0.5
 SPRITE_SCALING_COIN = 0.2
 SPRITE_SCALING_BALL = 0.5
-COIN_COUNT = 50
 EXPLOSION_TEXTURE_COUNT = 60
 
 SCREEN_WIDTH = 800
 SCREEN_HEIGHT = 600
+
+BALLS_COUNT = 0
+COINS_COUNT = 1
+COINS_MAX_SPEED = 0
 MOVEMENT_SPEED = 5
+
 
 class Explosion(arcade.Sprite):
     """ This class creates an explosion animation """
@@ -32,7 +36,7 @@ class Explosion(arcade.Sprite):
     explosion_textures = []
 
     def __init__(self, texture_list):
-        super().__init__("images/explosion/explosion0000.png")
+        super().__init__("my-images/explosion/explosion0000.png")
 
         # Start at the first frame
         self.current_texture = 0
@@ -61,8 +65,8 @@ class Coin(arcade.Sprite):
         # Position the coin
         self.center_x = random.randrange(SCREEN_WIDTH)
         self.center_y = random.randrange(SCREEN_HEIGHT)
-        self.change_x = random.randrange(-3, 4)
-        self.change_y = random.randrange(-3, 4)
+        self.change_x = random.randrange(-COINS_MAX_SPEED, COINS_MAX_SPEED+1)
+        self.change_y = random.randrange(-COINS_MAX_SPEED, COINS_MAX_SPEED+1)
 
     def update(self):
 
@@ -168,6 +172,7 @@ class MyGame(arcade.Window):
         # Set up the player info
         self.player = None
         self.score = 0
+        self.game_over = False
 
         # Track the current state of what key is pressed
         self.left_pressed = False
@@ -186,7 +191,6 @@ class MyGame(arcade.Window):
         self.ball_list = arcade.SpriteList()
         self.explosions_list = arcade.SpriteList()
 
-
         # Pre-load the animation frames. We don't do this in the __init__ because it
         # takes too long and would cause the game to pause.
         self.explosion_texture_list = []
@@ -195,7 +199,7 @@ class MyGame(arcade.Window):
             # Files from http://www.explosiongenerator.com are numbered sequentially.
             # This code loads all of the explosion0000.png to explosion0270.png files
             # that are part of this explosion.
-            texture_name = f"images/explosion/explosion{i:04d}.png"
+            texture_name = f"my-images/explosion/explosion{i:04d}.png"
             self.explosion_texture_list.append(arcade.load_texture(texture_name))
 
         # Score
@@ -203,20 +207,20 @@ class MyGame(arcade.Window):
 
         # Set up the player
         # Character image from kenney.nl
-        self.player = Player("images/character.png", SPRITE_SCALING_PLAYER)
+        self.player = Player("my-images/character.png", SPRITE_SCALING_PLAYER)
         self.all_sprites_list.append(self.player)
 
-        for i in range(2):
+        for i in range(BALLS_COUNT):
             # Create the killer balls instances
-            ball = Ball("images/pool_cue_ball.png", SPRITE_SCALING_BALL)
+            ball = Ball("my-images/pool_cue_ball.png", SPRITE_SCALING_BALL)
             self.all_sprites_list.append(ball)
             self.ball_list.append(ball)
 
         # Create the coins
-        for i in range(50):
+        for i in range(COINS_COUNT):
             # Create the coin instance
             # Coin image from kenney.nl
-            coin = Coin("images/coin_01.png", SPRITE_SCALING_COIN)
+            coin = Coin("my-images/coin_01.png", SPRITE_SCALING_COIN)
             # Add the coin to the lists
             self.all_sprites_list.append(coin)
             self.coin_list.append(coin)
@@ -256,25 +260,24 @@ class MyGame(arcade.Window):
         elif key == arcade.key.RIGHT:
             self.right_pressed = False
 
-    def update(self, delta_time):
-        """ Movement and game logic """
-
+    def pick_keyboard_action(self):
         # Calculate speed based on the keys pressed
-        self.player.change_x = 0
-        self.player.change_y = 0
+        change_x = 0
+        change_y = 0
 
         if self.up_pressed and not self.down_pressed:
-            self.player.change_y = MOVEMENT_SPEED
+            change_y = MOVEMENT_SPEED
         elif self.down_pressed and not self.up_pressed:
-            self.player.change_y = -MOVEMENT_SPEED
+            change_y = -MOVEMENT_SPEED
         if self.left_pressed and not self.right_pressed:
-            self.player.change_x = -MOVEMENT_SPEED
+            change_x = -MOVEMENT_SPEED
         elif self.right_pressed and not self.left_pressed:
-            self.player.change_x = MOVEMENT_SPEED
+            change_x = MOVEMENT_SPEED
+        return change_x,change_y
 
-        # Call update on all sprites (The sprites don't do much in this
-        # example though.)
-        self.all_sprites_list.update()
+    def update_env_get_reward(self):
+
+        reward = 0
 
         # Generate a list of coins that collided with the player.
         coin_hit_list = arcade.check_for_collision_with_list(self.player,
@@ -282,20 +285,18 @@ class MyGame(arcade.Window):
         # Loop through each colliding sprite, remove it, and add to the score.
         for coin in coin_hit_list:
             coin.kill()
-            self.score += 1
-
+            reward += 1
         # Kill coins hit by balls
         for ball in self.ball_list:
             coin_hit_list = arcade.check_for_collision_with_list(ball,self.coin_list)
             # Loop through each colliding sprite, remove it, and add to the score.
             for coin in coin_hit_list:
-                coin.kill()
-                
+                coin.kill()                
         # Generate a list of balls that collided with the player.
         ball_hit_list = arcade.check_for_collision_with_list(self.player,
                                                              self.ball_list)
         for ball in ball_hit_list:
-            self.score -= 10
+            reward -= 10
             explosion = Explosion(self.explosion_texture_list)
             explosion.center_x = ball.center_x
             explosion.center_y = ball.center_y
@@ -304,11 +305,33 @@ class MyGame(arcade.Window):
             ball.change_x += np.sign(ball.change_x)
             ball.change_y += np.sign(ball.change_y)
 
+        return reward,len(self.coin_list)<=0
+
+
+    def update(self, delta_time):
+        """ Movement and game logic """
+
+        # Calculate speed 
+        self.player.change_x , self.player.change_y = self.pick_keyboard_action()
+
+        # Call update on all sprites (The sprites don't do much in this
+        # example though.)
+        self.all_sprites_list.update()
+
+        reward, self.game_over = self.update_env_get_reward()
+        self.score += reward
+
+
+
+
+
+
 
 def main():
     window = MyGame()
     window.setup()
     arcade.run()
+    print("Game Over")
 
 
 if __name__ == "__main__":
