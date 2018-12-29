@@ -164,7 +164,7 @@ class MyGame(arcade.Window):
         # as mentioned at the top of this program.
         file_path = os.path.dirname(os.path.abspath(__file__))
         os.chdir(file_path)
-        
+
         # Variables that will hold sprite lists
         self.all_sprites_list = None
         self.coin_list = None
@@ -327,8 +327,8 @@ class MyGame(arcade.Window):
             coins_coords[i*2+1]=coin.center_y
         balls_coords = np.zeros(BALLS_COUNT*2)
         for i,ball in enumerate(self.ball_list):
-            ball_coords[i*2]=coin.center_x
-            ball_coords[i*2+1]=coin.center_y
+            balls_coords[i*2]=ball.center_x
+            balls_coords[i*2+1]=ball.center_y
         status = np.array([self.player.center_x, self.player.center_y, *coins_coords, *balls_coords])
         return(status)
     
