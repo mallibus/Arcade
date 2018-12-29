@@ -23,9 +23,11 @@ EXPLOSION_TEXTURE_COUNT = 60
 SCREEN_WIDTH = 800
 SCREEN_HEIGHT = 600
 
-BALLS_COUNT = 1
+HISTORY_FILE = "game_history.csv"
+
+BALLS_COUNT = 0
 COINS_COUNT = 2
-COINS_MAX_SPEED = 4
+COINS_MAX_SPEED = 0
 MOVEMENT_SPEED = 5
 
 
@@ -156,6 +158,13 @@ class MyGame(arcade.Window):
         # Call the parent class initializer
         super().__init__(SCREEN_WIDTH, SCREEN_HEIGHT, "Sprite Example")
 
+        # Set the working directory (where we expect to find files) to the same
+        # directory this .py file is in. You can leave this out of your own
+        # code, but it is needed to easily run the examples using "python -m"
+        # as mentioned at the top of this program.
+        file_path = os.path.dirname(os.path.abspath(__file__))
+        os.chdir(file_path)
+        
         # Variables that will hold sprite lists
         self.all_sprites_list = None
         self.coin_list = None
@@ -175,6 +184,7 @@ class MyGame(arcade.Window):
         self.down_pressed = False
 
         arcade.set_background_color(arcade.color.AMAZON)
+
 
     def setup(self):
         """ Set up the game and initialize the variables. """
@@ -225,7 +235,8 @@ class MyGame(arcade.Window):
             self.all_sprites_list.append(coin)
             self.coin_list.append(coin)
 
-
+        # Create game status history for learning
+        self.game_history = []
 
     def on_draw(self):
         """ Draw everything """
@@ -307,10 +318,58 @@ class MyGame(arcade.Window):
 
         return reward,len(self.coin_list)<=0
 
+    def get_current_status(self):
+        """Get the status of the game as an array of
+           player,coins and opponents positions"""
+        coins_coords = np.zeros(COINS_COUNT*2)
+        for i,coin in enumerate(self.coin_list):
+            coins_coords[i*2]=coin.center_x
+            coins_coords[i*2+1]=coin.center_y
+        balls_coords = np.zeros(BALLS_COUNT*2)
+        for i,ball in enumerate(self.ball_list):
+            ball_coords[i*2]=coin.center_x
+            ball_coords[i*2+1]=coin.center_y
+        status = np.array([self.player.center_x, self.player.center_y, *coins_coords, *balls_coords])
+        return(status)
+    
+    def save_history(self):
+        import os
+        exists = os.path.isfile(HISTORY_FILE)
+        if not exists:
+            print("With header")
+            header = "s0_player_x,s0_player_y,"
+            for i in range(COINS_COUNT):
+                header = header + "s0_coin_{:d}_x,s0_coin_{:d}_y,".format(i,i)
+            for i in range(BALLS_COUNT):
+                header = header + "s0_ball_{:d}_x,s0_ball_{:d}_y,".format(i,i)
+            header = header + "action_change_x,action_change_y,"
+            header = header + "s1_player_x,s1_player_y,"
+            for i in range(COINS_COUNT):
+                header = header + "s1_coin_{:d}_x,s1_coin_{:d}_y,".format(i,i)
+            for i in range(BALLS_COUNT):
+                header = header + "s1_ball_{:d}_x,s1_ball_{:d}_y,".format(i,i)
+            header = header + "game_over,reward\n"
+        else:
+            header=""
+
+        print("Saving {:d} history records to {:s}".format(len(self.game_history),HISTORY_FILE))
+        with open(HISTORY_FILE,"a+") as f:
+            f.write(header)
+            for l in self.game_history:
+                txt = ",".join([str(x) for x in l])+'\n'
+                f.write(txt)
+
 
     def on_update(self, delta_time):
         """ Movement and game logic """
-        if not self.game_over:
+        # If game over saves the history of the game and restarts
+        if  self.game_over:
+            self.save_history()
+            self.setup()
+        # Else go ahead with the game
+        else:
+            status_0 = self.get_current_status()
+
             # Calculate speed 
             self.player.change_x , self.player.change_y = self.pick_keyboard_action()
 
@@ -320,20 +379,16 @@ class MyGame(arcade.Window):
 
             reward, self.game_over = self.update_env_get_reward()
             self.score += reward
-        else:
-            self.setup()
 
+            status_1 = self.get_current_status()
 
-
-
-
-
+            self.game_history.append(np.array([*status_0,self.player.change_x,self.player.change_y,*status_1,int(self.game_over),reward]))
+            
 
 def main():
     window = MyGame()
     window.setup()
     arcade.run()
-    print("Game Over")
 
 
 if __name__ == "__main__":
