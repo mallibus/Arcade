@@ -23,9 +23,9 @@ EXPLOSION_TEXTURE_COUNT = 60
 SCREEN_WIDTH = 800
 SCREEN_HEIGHT = 600
 
-BALLS_COUNT = 0
-COINS_COUNT = 1
-COINS_MAX_SPEED = 0
+BALLS_COUNT = 1
+COINS_COUNT = 2
+COINS_MAX_SPEED = 4
 MOVEMENT_SPEED = 5
 
 
@@ -156,13 +156,6 @@ class MyGame(arcade.Window):
         # Call the parent class initializer
         super().__init__(SCREEN_WIDTH, SCREEN_HEIGHT, "Sprite Example")
 
-        # Set the working directory (where we expect to find files) to the same
-        # directory this .py file is in. You can leave this out of your own
-        # code, but it is needed to easily run the examples using "python -m"
-        # as mentioned at the top of this program.
-        file_path = os.path.dirname(os.path.abspath(__file__))
-        os.chdir(file_path)
-
         # Variables that will hold sprite lists
         self.all_sprites_list = None
         self.coin_list = None
@@ -173,6 +166,7 @@ class MyGame(arcade.Window):
         self.player = None
         self.score = 0
         self.game_over = False
+        self.initialized = False
 
         # Track the current state of what key is pressed
         self.left_pressed = False
@@ -185,22 +179,28 @@ class MyGame(arcade.Window):
     def setup(self):
         """ Set up the game and initialize the variables. """
 
+        if not self.initialized:
+            # Pre-load the animation frames. We don't do this in the __init__ because it
+            # takes too long and would cause the game to pause.
+            self.explosion_texture_list = []
+
+            for i in range(EXPLOSION_TEXTURE_COUNT):
+                # Files from http://www.explosiongenerator.com are numbered sequentially.
+                # This code loads all of the explosion0000.png to explosion0270.png files
+                # that are part of this explosion.
+                texture_name = f"my-images/explosion/explosion{i:04d}.png"
+                self.explosion_texture_list.append(arcade.load_texture(texture_name))
+
+            self.initialized = True
+
+        # Restores game status
+        self.game_over = False
+
         # Sprite lists
         self.all_sprites_list = arcade.SpriteList()
         self.coin_list = arcade.SpriteList()
         self.ball_list = arcade.SpriteList()
         self.explosions_list = arcade.SpriteList()
-
-        # Pre-load the animation frames. We don't do this in the __init__ because it
-        # takes too long and would cause the game to pause.
-        self.explosion_texture_list = []
-
-        for i in range(EXPLOSION_TEXTURE_COUNT):
-            # Files from http://www.explosiongenerator.com are numbered sequentially.
-            # This code loads all of the explosion0000.png to explosion0270.png files
-            # that are part of this explosion.
-            texture_name = f"my-images/explosion/explosion{i:04d}.png"
-            self.explosion_texture_list.append(arcade.load_texture(texture_name))
 
         # Score
         self.score = 0
@@ -308,18 +308,20 @@ class MyGame(arcade.Window):
         return reward,len(self.coin_list)<=0
 
 
-    def update(self, delta_time):
+    def on_update(self, delta_time):
         """ Movement and game logic """
+        if not self.game_over:
+            # Calculate speed 
+            self.player.change_x , self.player.change_y = self.pick_keyboard_action()
 
-        # Calculate speed 
-        self.player.change_x , self.player.change_y = self.pick_keyboard_action()
+            # Call update on all sprites (The sprites don't do much in this
+            # example though.)
+            self.all_sprites_list.update()
 
-        # Call update on all sprites (The sprites don't do much in this
-        # example though.)
-        self.all_sprites_list.update()
-
-        reward, self.game_over = self.update_env_get_reward()
-        self.score += reward
+            reward, self.game_over = self.update_env_get_reward()
+            self.score += reward
+        else:
+            self.setup()
 
 
 
