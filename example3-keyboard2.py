@@ -13,7 +13,7 @@ import random
 import arcade
 import numpy as np
 import os
-from tensorflow.keras.models import load_model
+
 import datetime as dt
 
 
@@ -32,7 +32,7 @@ SCREEN_WIDTH = 400
 SCREEN_HEIGHT = 400
 
 HISTORY_FILE = "game_history.csv"
-LOSS_FILE = "learning_loss.csv"
+LOSS_FILE    = "learning_loss.csv"
 
 BALLS_COUNT = 0
 COINS_COUNT = 20
@@ -48,13 +48,13 @@ LEARNING_INTERVAL = 100
 MODEL_FILE = "model.h5"
 
 learning_rate=0.001
-epsilon  = 0.5
-max_memory = 3000
+EPSILON  = "Adapt"
+max_memory = 5000
 batch_size = 512
 # Actions - 0 - stay, 1-8 move (see encode_action)
 number_actions = 9
-# status is the posizion of the player + the positions of other stuff
-status_size = 2 + BALLS_COUNT*2 + COINS_COUNT*2
+# status is the posizion of the player + the positions of other stuff + number of coins + number of opponents
+status_size = 2 +  1 + COINS_COUNT*2 + 1 + BALLS_COUNT*2
 
 
 class Explosion(arcade.Sprite):
@@ -226,16 +226,10 @@ class MyGame(arcade.Window):
         arcade.set_background_color(arcade.color.AMAZON)
         
         # BUILD THE BRAIN
-        self.brain = brain.Brain(status_size = status_size, learning_rate=learning_rate, number_actions=number_actions)
-        if LOAD_MODEL:
-            if os.path.isfile(MODEL_FILE):
-                print("{:s} model file loaded".format(MODEL_FILE))
-                self.brain.model = load_model("model.h5")
-            else:
-                print("{:s} model file not found - starting from scratch".format(MODEL_FILE))
-                
+        self.brain = brain.Brain(status_size = status_size, learning_rate=learning_rate, 
+                                 number_actions=number_actions,model_file=MODEL_FILE)
         # DQN MODEL
-        self.dqn = dqn.DQN(max_memory=max_memory,discount_factor=0.9)
+        self.dqn = dqn.DQN(max_memory=max_memory,discount_factor=0.9,epsilon=EPSILON)
 
 
     def setup(self):
@@ -407,7 +401,21 @@ class MyGame(arcade.Window):
 
     def get_current_status(self,scaled = False):
         """Get the status of the game as an array of
-           player,coins and opponents positions"""
+           player x,y
+           number of coins, coins x,y
+           number of balls, balls x,y
+        """
+        
+        x = self.player.center_x
+        y = self.player.center_y
+        if scaled:
+            x = self.player.center_x / SCREEN_WIDTH
+            y = self.player.center_y / SCREEN_HEIGHT
+        
+        n_coins = len(self.coin_list)
+        if scaled and (COINS_COUNT>0):
+            n_coins = n_coins / COINS_COUNT
+
         coins_coords = np.zeros(COINS_COUNT*2)
         for i,coin in enumerate(self.coin_list):
             if scaled:
@@ -416,6 +424,10 @@ class MyGame(arcade.Window):
             else:
                 coins_coords[i*2]=coin.center_x 
                 coins_coords[i*2+1]=coin.center_y 
+        n_balls = len(self.ball_list)
+        if scaled and (BALLS_COUNT>0):
+            n_balls = n_balls / BALLS_COUNT
+
         balls_coords = np.zeros(BALLS_COUNT*2)
         for i,ball in enumerate(self.ball_list):
             if scaled:
@@ -425,30 +437,31 @@ class MyGame(arcade.Window):
                 balls_coords[i*2]=ball.center_x
                 balls_coords[i*2+1]=ball.center_y
 
-        if scaled:
-            status = np.array([self.player.center_x/SCREEN_WIDTH, self.player.center_y/SCREEN_HEIGHT, *coins_coords, *balls_coords])
-        else:
-            status = np.array([self.player.center_x, self.player.center_y, *coins_coords, *balls_coords])
+        status = np.array([x, y, n_coins, *coins_coords, n_balls, *balls_coords])
         return(status)
 
 
     def save_history(self):
         exists = os.path.isfile(HISTORY_FILE)
         if not exists:
-            print("With header")
+            print("Creating new history file with header")
             header = "Arcade RL experiment - History file - " + dt.datetime.now().strftime("%Y/%m/%d %H:%M:%S") + "\n"           
-            header = header + "learning_rate : {:f}\nepsilon : {:f}\nmax_memory : {:d}\nbatch_size : {:d}\n".\
-                            format(learning_rate,epsilon,max_memory,batch_size)
+            header = header + "learning_rate : {:f}\nepsilon : {:s}\nmax_memory : {:d}\nbatch_size : {:d}\n".\
+                            format(learning_rate,str(EPSILON),max_memory,batch_size)
 
-            header = header + "s0_player_x,s0_player_y,"
+            header = header + "timer,s0_player_x,s0_player_y,"
+            header = header + "s0_coins,"
             for i in range(COINS_COUNT):
                 header = header + "s0_coin_{:d}_x,s0_coin_{:d}_y,".format(i,i)
+            header = header + "s0_balls,"
             for i in range(BALLS_COUNT):
                 header = header + "s0_ball_{:d}_x,s0_ball_{:d}_y,".format(i,i)
             header = header + "action,"
             header = header + "s1_player_x,s1_player_y,"
+            header = header + "s1_coins,"
             for i in range(COINS_COUNT):
                 header = header + "s1_coin_{:d}_x,s1_coin_{:d}_y,".format(i,i)
+            header = header + "s1_balls,"
             for i in range(BALLS_COUNT):
                 header = header + "s1_ball_{:d}_x,s1_ball_{:d}_y,".format(i,i)
             header = header + "game_over,reward\n"
@@ -464,17 +477,6 @@ class MyGame(arcade.Window):
         # Reset game historyu after saving
         self.game_history = []
 
-    def save_loss(self,loss):
-        exists = os.path.isfile(LOSS_FILE)
-        if not exists:
-            print("Loss file with header")
-            header = "Arcade RL experiment - Loss file -  " + dt.datetime.now().strftime("%Y/%m/%d %H:%M:%S") + "\n"
-            header = header + "Loss\n"
-        else:
-            header=""
-        with open(LOSS_FILE,"a+") as f:
-            f.write(header)
-            f.write(str(loss)+"\n")
 
     def encode_action(self):
         """ 9 possible actions: 0 - no movement
@@ -503,10 +505,10 @@ class MyGame(arcade.Window):
             # GET BATCHES INPUTS AND TARGETS
             inputs, targets = self.dqn.get_batch(self.brain.model,batch_size = batch_size)
             # COMPUTING THE LOSS
-            loss = self.brain.model.train_on_batch(inputs,targets)
-            self.save_loss(loss)
-            print("Learning loss :",loss)
-            self.brain.model.save(MODEL_FILE)
+            loss = self.brain.learn_batch(inputs,targets,loss_file=LOSS_FILE,model_file=MODEL_FILE)
+            if self.dqn.epsilon_adapt:
+                self.dqn.epsilon = self.brain.loss_decay(10)
+            print("Loss: {:8.6f}   Epsilon: {:8.6f}".format(loss,self.dqn.epsilon))
 
     def on_update(self, delta_time):
         """ Movement and game logic """
@@ -519,11 +521,10 @@ class MyGame(arcade.Window):
         else:
             self.timer += 1
             status_0 = self.get_current_status(scaled=True)
-
             # Calculate speed 
             self.player.change_x , self.player.change_y = self.pick_keyboard_action()
             if(self.player.change_x==0)and(self.player.change_y==0):
-                if TRAINING and (np.random.rand() <= epsilon):
+                if TRAINING and (np.random.rand() <= self.dqn.epsilon):
                     #print("random")
                     self.player.change_x , self.player.change_y = self.pick_random_action()
                 else:
@@ -540,7 +541,12 @@ class MyGame(arcade.Window):
 
             status_1 = self.get_current_status(scaled=True)
 
-            self.game_history.append(np.array([*status_0,self.encode_action(),*status_1,int(self.game_over),reward]))
+            self.game_history.append(np.array([self.timer,
+                                                *status_0,
+                                                self.encode_action(),
+                                                *status_1,
+                                                int(self.game_over),
+                                                reward]))
             self.dqn.remember([np.matrix(status_0),self.encode_action(),reward,np.matrix(status_1)],int(self.game_over))
  
             if (self.timer % LEARNING_INTERVAL)== 0:

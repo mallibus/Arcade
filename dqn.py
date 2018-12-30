@@ -7,10 +7,21 @@ import numpy as np
 
 class DQN(object):
     # PARAMS DEFINITION
-    def __init__(self, max_memory = 3000, discount_factor = 0.9):
+    def __init__(self, max_memory = 3000, discount_factor = 0.9, epsilon = 'Adapt'):
         self.memory = list()
         self.max_memory = max_memory
         self.discount = discount_factor
+
+        # Epsilon policy - adapt to loss or fixed (numeric)
+        if type(epsilon)==str:
+            if epsilon!="Adapt":
+                print("Unknonw epsilon string ",epsilon," Setting Adapt by default")
+            self.epsilon_adapt = True
+            self.epsilon = 1.0
+        else:
+            self.epsilon_adapt = False
+            self.epsilon = epsilon
+
         print("Initialized DQN")
         print("Max memory : {:d}, Discount factor {:3f}".format(max_memory,discount_factor))
         
