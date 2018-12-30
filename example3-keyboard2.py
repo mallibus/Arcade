@@ -38,7 +38,8 @@ BALLS_COUNT = 0
 COINS_COUNT = 20
 COINS_MAX_SPEED = 0
 MOVEMENT_SPEED = 5
-
+MIN_BALL_SPEED = 0
+MAX_BALL_SPEED = 1
 
 
 # DQL . SETTING PARAMETERS
@@ -126,8 +127,8 @@ class Ball(arcade.Sprite):
         # Position the ball
         self.center_x = random.randrange(SCREEN_WIDTH)
         self.center_y = random.randrange(SCREEN_HEIGHT)
-        self.change_x = random.randrange(4, 6)*random.choice([-1,1])
-        self.change_y = random.randrange(4, 6)*random.choice([-1,1])
+        self.change_x = random.randrange(MIN_BALL_SPEED, MAX_BALL_SPEED)*random.choice([-1,1])
+        self.change_y = random.randrange(MIN_BALL_SPEED, MAX_BALL_SPEED)*random.choice([-1,1])
 
     def update(self):
 
@@ -369,15 +370,14 @@ class MyGame(arcade.Window):
         
     def update_env_get_reward(self):
 
-        reward = 0
-
+        reward = -0.5
         # Generate a list of coins that collided with the player.
         coin_hit_list = arcade.check_for_collision_with_list(self.player,
                                                              self.coin_list)
         # Loop through each colliding sprite, remove it, and add to the score.
         for coin in coin_hit_list:
             coin.kill()
-            reward += 1
+            reward += 5
         # Kill coins hit by balls
         for ball in self.ball_list:
             coin_hit_list = arcade.check_for_collision_with_list(ball,self.coin_list)
@@ -397,7 +397,7 @@ class MyGame(arcade.Window):
             ball.change_x += np.sign(ball.change_x)
             ball.change_y += np.sign(ball.change_y)
 
-        return reward,len(self.coin_list)<=0
+        return reward/1000,len(self.coin_list)<=0
 
     def get_current_status(self,scaled = False):
         """Get the status of the game as an array of
