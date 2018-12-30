@@ -50,6 +50,7 @@ MODEL_FILE = "model.h5"
 
 learning_rate=0.001
 EPSILON  = "Adapt"
+DECAY_AVERAGE = 50
 max_memory = 5000
 batch_size = 512
 # Actions - 0 - stay, 1-8 move (see encode_action)
@@ -507,7 +508,7 @@ class MyGame(arcade.Window):
             # COMPUTING THE LOSS
             loss = self.brain.learn_batch(inputs,targets,loss_file=LOSS_FILE,model_file=MODEL_FILE)
             if self.dqn.epsilon_adapt:
-                self.dqn.epsilon = self.brain.loss_decay(10)
+                self.dqn.epsilon = self.brain.loss_decay(DECAY_AVERAGE)
             print("Loss: {:8.6f}   Epsilon: {:8.6f}".format(loss,self.dqn.epsilon))
 
     def on_update(self, delta_time):
