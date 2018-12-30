@@ -9,3 +9,6 @@ saved_games/
 
 # Ignore Keras model files
 *.h5
+
+# Ignore Jupoyter notebook internals
+.ipynb_checkpoints/
