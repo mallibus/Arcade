@@ -13,22 +13,46 @@ import random
 import arcade
 import numpy as np
 import os
+from tensorflow.keras.models import load_model
 
-# --- Constants ---
+
+import random as rn
+import brain
+import dqn
+
+
+# GAME --- Constants ---
 SPRITE_SCALING_PLAYER = 0.5
 SPRITE_SCALING_COIN = 0.2
-SPRITE_SCALING_BALL = 0.5
+SPRITE_SCALING_BALL = 0.8
 EXPLOSION_TEXTURE_COUNT = 60
 
-SCREEN_WIDTH = 800
-SCREEN_HEIGHT = 600
+SCREEN_WIDTH = 400
+SCREEN_HEIGHT = 400
 
 HISTORY_FILE = "game_history.csv"
 
 BALLS_COUNT = 0
-COINS_COUNT = 2
+COINS_COUNT = 20
 COINS_MAX_SPEED = 0
 MOVEMENT_SPEED = 5
+
+
+
+# DQL . SETTING PARAMETERS
+TRAINING = True
+LOAD_MODEL = True
+MODEL_FILE = "model.h5"
+
+learning_rate=0.001
+epsilon  = 0.5
+number_epochs = 100
+max_memory = 3000
+batch_size = 512
+# Actions - 0 - stay, 1-8 move (see encode_action)
+number_actions = 9
+# status is the posizion of the player + the positions of other stuff
+status_size = 2 + BALLS_COUNT*2 + COINS_COUNT*2
 
 
 class Explosion(arcade.Sprite):
@@ -53,7 +77,6 @@ class Explosion(arcade.Sprite):
             self.set_texture(self.current_texture)
         else:
             self.kill()
-
 
 class Coin(arcade.Sprite):
 
@@ -123,15 +146,16 @@ class Ball(arcade.Sprite):
         if self.top > SCREEN_HEIGHT:
             self.change_y *= -1
 
-
 class Player(arcade.Sprite):
 
     def __init__(self, filename, sprite_scaling):
 
         super().__init__(filename, sprite_scaling)
 
-        self.center_x = 50
-        self.center_y = 50
+        #self.center_x = 50
+        #self.center_y = 50
+        self.center_x = random.randrange(SCREEN_WIDTH)
+        self.center_y = random.randrange(SCREEN_HEIGHT)
 
         self.change_x = 0
         self.change_y = 0
@@ -184,6 +208,18 @@ class MyGame(arcade.Window):
         self.down_pressed = False
 
         arcade.set_background_color(arcade.color.AMAZON)
+        
+        # BUILD THE BRAIN
+        self.brain = brain.Brain(status_size = status_size, learning_rate=learning_rate, number_actions=number_actions)
+        if LOAD_MODEL:
+            if os.path.isfile(MODEL_FILE):
+                print("{:s} model file loaded".format(MODEL_FILE))
+                self.brain.model = load_model("model.h5")
+            else:
+                print("{:s} model file not found - starting from scratch".format(MODEL_FILE))
+                
+        # DQN MODEL
+        self.dqn = dqn.DQN(max_memory=max_memory,discount_factor=0.9)
 
 
     def setup(self):
@@ -286,6 +322,40 @@ class MyGame(arcade.Window):
             change_x = MOVEMENT_SPEED
         return change_x,change_y
 
+    def pick_dql_action(self):
+        status_0 = self.get_current_status(scaled=True)
+        q_values = self.brain.model.predict(np.matrix(status_0))
+        action = np.argmax(q_values[0])
+        action_encoder = { 0 : (0,0),\
+                           1 : (0,1),\
+                           2 : (1,1),\
+                           3 : (1,0),\
+                           4 : (1,-1),\
+                           5 : (0,-1),\
+                           6 : (-1,-1),\
+                           7 : (-1,0),\
+                           8:  (-1,1) }
+        enc_action = action_encoder[action]
+        change_x = MOVEMENT_SPEED * enc_action[0]
+        change_y = MOVEMENT_SPEED * enc_action[1]
+        return change_x,change_y
+
+    def pick_random_action(self):
+        action = np.random.randint(number_actions)
+        action_encoder = { 0 : (0,0),\
+                           1 : (0,1),\
+                           2 : (1,1),\
+                           3 : (1,0),\
+                           4 : (1,-1),\
+                           5 : (0,-1),\
+                           6 : (-1,-1),\
+                           7 : (-1,0),\
+                           8:  (-1,1) }
+        enc_action = action_encoder[action]
+        change_x = MOVEMENT_SPEED * enc_action[0]
+        change_y = MOVEMENT_SPEED * enc_action[1]
+        return change_x,change_y
+        
     def update_env_get_reward(self):
 
         reward = 0
@@ -318,22 +388,34 @@ class MyGame(arcade.Window):
 
         return reward,len(self.coin_list)<=0
 
-    def get_current_status(self):
+    def get_current_status(self,scaled = False):
         """Get the status of the game as an array of
            player,coins and opponents positions"""
         coins_coords = np.zeros(COINS_COUNT*2)
         for i,coin in enumerate(self.coin_list):
-            coins_coords[i*2]=coin.center_x
-            coins_coords[i*2+1]=coin.center_y
+            if scaled:
+                coins_coords[i*2]=coin.center_x / SCREEN_WIDTH
+                coins_coords[i*2+1]=coin.center_y / SCREEN_HEIGHT
+            else:
+                coins_coords[i*2]=coin.center_x 
+                coins_coords[i*2+1]=coin.center_y 
         balls_coords = np.zeros(BALLS_COUNT*2)
         for i,ball in enumerate(self.ball_list):
-            balls_coords[i*2]=ball.center_x
-            balls_coords[i*2+1]=ball.center_y
-        status = np.array([self.player.center_x, self.player.center_y, *coins_coords, *balls_coords])
+            if scaled:
+                balls_coords[i*2]=ball.center_x / SCREEN_WIDTH
+                balls_coords[i*2+1]=ball.center_y / SCREEN_HEIGHT
+            else:
+                balls_coords[i*2]=ball.center_x
+                balls_coords[i*2+1]=ball.center_y
+
+        if scaled:
+            status = np.array([self.player.center_x/SCREEN_WIDTH, self.player.center_y/SCREEN_HEIGHT, *coins_coords, *balls_coords])
+        else:
+            status = np.array([self.player.center_x, self.player.center_y, *coins_coords, *balls_coords])
         return(status)
-    
+
+
     def save_history(self):
-        import os
         exists = os.path.isfile(HISTORY_FILE)
         if not exists:
             print("With header")
@@ -342,7 +424,7 @@ class MyGame(arcade.Window):
                 header = header + "s0_coin_{:d}_x,s0_coin_{:d}_y,".format(i,i)
             for i in range(BALLS_COUNT):
                 header = header + "s0_ball_{:d}_x,s0_ball_{:d}_y,".format(i,i)
-            header = header + "action_change_x,action_change_y,"
+            header = header + "action,"
             header = header + "s1_player_x,s1_player_y,"
             for i in range(COINS_COUNT):
                 header = header + "s1_coin_{:d}_x,s1_coin_{:d}_y,".format(i,i)
@@ -359,19 +441,59 @@ class MyGame(arcade.Window):
                 txt = ",".join([str(x) for x in l])+'\n'
                 f.write(txt)
 
+    def encode_action(self):
+        """ 9 possible actions: 0 - no movement
+                                1 - move up
+                                2 - move up-right
+                                3 - mode right
+                                4 - move down-right
+                                5 - move down
+                                6 - move down-left
+                                7 - move left
+                                8 - move up-left """
+        cx = np.sign(self.player.change_x)
+        cy = np.sign(self.player.change_y)
+        action_decoder = {  (0,0)  : 0,\
+                            (0,1)  : 1,\
+                            (1,1)  : 2,\
+                            (1,0)  : 3,\
+                            (1,-1) : 4,\
+                            (0,-1) : 5,\
+                            (-1,-1): 6,\
+                            (-1,0) : 7,\
+                            (-1,1) : 8 }
+        return action_decoder[(cx,cy)]
+
 
     def on_update(self, delta_time):
         """ Movement and game logic """
         # If game over saves the history of the game and restarts
         if  self.game_over:
             self.save_history()
+            # GET BATCHES INPUTS AND TARGETS
+            inputs, targets = self.dqn.get_batch(self.brain.model,batch_size = batch_size)
+            # COMPUTING THE LOSS
+            loss = self.brain.model.train_on_batch(inputs,targets)
+            self.brain.loss_trend.append(loss)
+
+            print("Accumulated loss :",sum(self.brain.loss_trend))
+            self.brain.model.save(MODEL_FILE)
+
             self.setup()
         # Else go ahead with the game
         else:
-            status_0 = self.get_current_status()
+            status_0 = self.get_current_status(scaled=True)
 
             # Calculate speed 
             self.player.change_x , self.player.change_y = self.pick_keyboard_action()
+            if(self.player.change_x==0)and(self.player.change_y==0):
+                if np.random.rand() <= epsilon:
+                    #print("random")
+                    self.player.change_x , self.player.change_y = self.pick_random_action()
+                else:
+                    #print("dql")
+                    self.player.change_x , self.player.change_y = self.pick_dql_action()
+            #print("x+=",self.player.change_x," y+=",self.player.change_y)
 
             # Call update on all sprites (The sprites don't do much in this
             # example though.)
@@ -380,10 +502,11 @@ class MyGame(arcade.Window):
             reward, self.game_over = self.update_env_get_reward()
             self.score += reward
 
-            status_1 = self.get_current_status()
+            status_1 = self.get_current_status(scaled=True)
 
-            self.game_history.append(np.array([*status_0,self.player.change_x,self.player.change_y,*status_1,int(self.game_over),reward]))
-            
+            self.game_history.append(np.array([*status_0,self.encode_action(),*status_1,int(self.game_over),reward]))
+            self.dqn.remember([np.matrix(status_0),self.encode_action(),reward,np.matrix(status_1)],int(self.game_over))
+
 
 def main():
     window = MyGame()

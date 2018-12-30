@@ -7,10 +7,12 @@ import numpy as np
 
 class DQN(object):
     # PARAMS DEFINITION
-    def __init__(self, max_memory = 100, discount_factor = 0.9):
+    def __init__(self, max_memory = 3000, discount_factor = 0.9):
         self.memory = list()
         self.max_memory = max_memory
         self.discount = discount_factor
+        print("Initialized DQN")
+        print("Max memory : {:d}, Discount factor {:3f}".format(max_memory,discount_factor))
         
         
     # METHOD TO STORE TRANSITIONS IN MEMORY
@@ -33,7 +35,7 @@ class DQN(object):
         inputs  = np.zeros((min(batch_size,len_memory), num_inputs))
         targets = np.zeros((min(batch_size,len_memory), num_outputs))
         
-        for i,idx in enumerate(np.random.randint(0,len_memory, size = min(batch_size,len_memory))):
+        for i, idx in enumerate(np.random.choice(range(len_memory), size = min(len_memory, batch_size), replace=False)):
             current_state,action,reward,next_state = self.memory[idx][0]
             game_over = self.memory[idx][1]
             inputs[i] = current_state
