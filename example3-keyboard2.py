@@ -14,6 +14,7 @@ import arcade
 import numpy as np
 import os
 from tensorflow.keras.models import load_model
+import datetime as dt
 
 
 import random as rn
@@ -31,6 +32,7 @@ SCREEN_WIDTH = 400
 SCREEN_HEIGHT = 400
 
 HISTORY_FILE = "game_history.csv"
+LOSS_FILE = "learning_loss.csv"
 
 BALLS_COUNT = 0
 COINS_COUNT = 20
@@ -42,11 +44,11 @@ MOVEMENT_SPEED = 5
 # DQL . SETTING PARAMETERS
 TRAINING = True
 LOAD_MODEL = True
+LEARNING_INTERVAL = 100
 MODEL_FILE = "model.h5"
 
 learning_rate=0.001
 epsilon  = 0.5
-number_epochs = 100
 max_memory = 3000
 batch_size = 512
 # Actions - 0 - stay, 1-8 move (see encode_action)
@@ -152,10 +154,10 @@ class Player(arcade.Sprite):
 
         super().__init__(filename, sprite_scaling)
 
-        #self.center_x = 50
-        #self.center_y = 50
-        self.center_x = random.randrange(SCREEN_WIDTH)
-        self.center_y = random.randrange(SCREEN_HEIGHT)
+        self.center_x = int(SCREEN_WIDTH / 2)
+        self.center_y = int(SCREEN_HEIGHT / 2)
+        #self.center_x = random.randrange(SCREEN_WIDTH)
+        #self.center_y = random.randrange(SCREEN_HEIGHT)
 
         self.change_x = 0
         self.change_y = 0
@@ -163,7 +165,8 @@ class Player(arcade.Sprite):
     def update(self):
         self.center_x += self.change_x
         self.center_y += self.change_y
-
+        """
+       # Limit player inside window
         if self.left < 0:
             self.left = 0
         elif self.right > SCREEN_WIDTH - 1:
@@ -173,6 +176,17 @@ class Player(arcade.Sprite):
             self.bottom = 0
         elif self.top > SCREEN_HEIGHT - 1:
             self.top = SCREEN_HEIGHT - 1
+        """
+       # Wrap player to other side (toroidal field)
+        if self.center_x < 0:
+            self.center_x = SCREEN_WIDTH - 1
+        elif self.center_x > SCREEN_WIDTH - 1:
+            self.center_x = 0
+
+        if self.center_y < 0:
+            self.center_y = SCREEN_HEIGHT - 1
+        elif self.center_y > SCREEN_HEIGHT - 1:
+            self.center_y = 0
 
 class MyGame(arcade.Window):
     """ Our custom Window Class"""
@@ -198,8 +212,10 @@ class MyGame(arcade.Window):
         # Set up the player info
         self.player = None
         self.score = 0
+
         self.game_over = False
         self.initialized = False
+        self.timer = 0
 
         # Track the current state of what key is pressed
         self.left_pressed = False
@@ -241,6 +257,7 @@ class MyGame(arcade.Window):
 
         # Restores game status
         self.game_over = False
+        self.timer = 0
 
         # Sprite lists
         self.all_sprites_list = arcade.SpriteList()
@@ -419,7 +436,11 @@ class MyGame(arcade.Window):
         exists = os.path.isfile(HISTORY_FILE)
         if not exists:
             print("With header")
-            header = "s0_player_x,s0_player_y,"
+            header = "Arcade RL experiment - History file - " + dt.datetime.now().strftime("%Y/%m/%d %H:%M:%S") + "\n"           
+            header = header + "learning_rate : {:f}\nepsilon : {:f}\nmax_memory : {:d}\nbatch_size : {:d}\n".\
+                            format(learning_rate,epsilon,max_memory,batch_size)
+
+            header = header + "s0_player_x,s0_player_y,"
             for i in range(COINS_COUNT):
                 header = header + "s0_coin_{:d}_x,s0_coin_{:d}_y,".format(i,i)
             for i in range(BALLS_COUNT):
@@ -440,6 +461,20 @@ class MyGame(arcade.Window):
             for l in self.game_history:
                 txt = ",".join([str(x) for x in l])+'\n'
                 f.write(txt)
+        # Reset game historyu after saving
+        self.game_history = []
+
+    def save_loss(self,loss):
+        exists = os.path.isfile(LOSS_FILE)
+        if not exists:
+            print("Loss file with header")
+            header = "Arcade RL experiment - Loss file -  " + dt.datetime.now().strftime("%Y/%m/%d %H:%M:%S") + "\n"
+            header = header + "Loss\n"
+        else:
+            header=""
+        with open(LOSS_FILE,"a+") as f:
+            f.write(header)
+            f.write(str(loss)+"\n")
 
     def encode_action(self):
         """ 9 possible actions: 0 - no movement
@@ -464,24 +499,25 @@ class MyGame(arcade.Window):
                             (-1,1) : 8 }
         return action_decoder[(cx,cy)]
 
+    def learn_something(self):
+            # GET BATCHES INPUTS AND TARGETS
+            inputs, targets = self.dqn.get_batch(self.brain.model,batch_size = batch_size)
+            # COMPUTING THE LOSS
+            loss = self.brain.model.train_on_batch(inputs,targets)
+            self.save_loss(loss)
+            print("Learning loss :",loss)
+            self.brain.model.save(MODEL_FILE)
 
     def on_update(self, delta_time):
         """ Movement and game logic """
         # If game over saves the history of the game and restarts
         if  self.game_over:
             self.save_history()
-            # GET BATCHES INPUTS AND TARGETS
-            inputs, targets = self.dqn.get_batch(self.brain.model,batch_size = batch_size)
-            # COMPUTING THE LOSS
-            loss = self.brain.model.train_on_batch(inputs,targets)
-            self.brain.loss_trend.append(loss)
-
-            print("Accumulated loss :",sum(self.brain.loss_trend))
-            self.brain.model.save(MODEL_FILE)
-
+            self.learn_something()
             self.setup()
         # Else go ahead with the game
         else:
+            self.timer += 1
             status_0 = self.get_current_status(scaled=True)
 
             # Calculate speed 
@@ -506,7 +542,9 @@ class MyGame(arcade.Window):
 
             self.game_history.append(np.array([*status_0,self.encode_action(),*status_1,int(self.game_over),reward]))
             self.dqn.remember([np.matrix(status_0),self.encode_action(),reward,np.matrix(status_1)],int(self.game_over))
-
+ 
+            if (self.timer % LEARNING_INTERVAL)== 0:
+                self.learn_something()
 
 def main():
     window = MyGame()
