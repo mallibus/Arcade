@@ -487,7 +487,7 @@ class MyGame(arcade.Window):
             # Calculate speed 
             self.player.change_x , self.player.change_y = self.pick_keyboard_action()
             if(self.player.change_x==0)and(self.player.change_y==0):
-                if np.random.rand() <= epsilon:
+                if TRAINING and (np.random.rand() <= epsilon):
                     #print("random")
                     self.player.change_x , self.player.change_y = self.pick_random_action()
                 else:

@@ -1,0 +1,8 @@
+# Ignore python cache
+__pycache__/
+
+# Ignore dataset files / history files stored as csv
+*.csv
+
+# Ignore Keras model files
+*.h5
