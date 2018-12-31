@@ -12,3 +12,6 @@ saved_games/
 
 # Ignore Jupoyter notebook internals
 .ipynb_checkpoints/
+
+# Ignore files starting with 00
+00*

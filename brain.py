@@ -15,11 +15,11 @@ class Brain(object):
         self.learning_rate = learning_rate
         states = Input(shape=(status_size,)) # Number of neurons to encode the state (status_size rows, 1 column)
 
-        x = Dense(units=256, activation='sigmoid')(states)
-        x = Dropout(rate = 0.1)(x)
+        x = Dense(units=128, activation='sigmoid')(states)
+        x = Dropout(rate = 0.2)(x)
 
-        y = Dense(units=64, activation='sigmoid')(x)
-        y = Dropout(rate = 0.1)(y)
+        y = Dense(units=32, activation='sigmoid')(x)
+        y = Dropout(rate = 0.2)(y)
         q_values = Dense(units = number_actions, activation='softmax')(y)
         
         self.model = Model(inputs = states, outputs = q_values)
@@ -62,7 +62,7 @@ class Brain(object):
     
     # Compute how much loss is decreased from the max loss experienceds to the average of the last samples
     # This is used as "epsilon" in DQL
-    def loss_decay(self,samples=10):
+    def loss_decay(self,samples=50):
         if len(self.loss_trend)<(samples):
             print("decay too early :", len(self.loss_trend))
             return 1.0

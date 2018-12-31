@@ -28,16 +28,19 @@ SPRITE_SCALING_COIN = 0.2
 SPRITE_SCALING_BALL = 0.8
 EXPLOSION_TEXTURE_COUNT = 60
 
-SCREEN_WIDTH = 400
-SCREEN_HEIGHT = 400
+SCREEN_WIDTH = 300
+SCREEN_HEIGHT = 300
 
 HISTORY_FILE = "game_history.csv"
 LOSS_FILE    = "learning_loss.csv"
 
 BALLS_COUNT = 0
-COINS_COUNT = 20
+COINS_COUNT = 1
+COINS_START = 'center'
+#PLAYER_BORDER = 'torus'
+PLAYER_BORDER = 'rigid'
 COINS_MAX_SPEED = 0
-MOVEMENT_SPEED = 5
+MOVEMENT_SPEED = 10
 MIN_BALL_SPEED = 0
 MAX_BALL_SPEED = 1
 
@@ -48,9 +51,10 @@ LOAD_MODEL = True
 LEARNING_INTERVAL = 100
 MODEL_FILE = "model.h5"
 
-learning_rate=0.001
+learning_rate=0.00001
 EPSILON  = "Adapt"
-DECAY_AVERAGE = 50
+#EPSILON  = 0.2
+DECAY_AVERAGE = 10
 max_memory = 5000
 batch_size = 512
 # Actions - 0 - stay, 1-8 move (see encode_action)
@@ -84,16 +88,24 @@ class Explosion(arcade.Sprite):
 
 class Coin(arcade.Sprite):
 
-    def __init__(self, filename, sprite_scaling):
+    def __init__(self, filename, sprite_scaling,  start='random'):
 
         super().__init__(filename, sprite_scaling)
 
         self.change_x = 0
         self.change_y = 0
 
+        print("Init COIN start = ",start)
+
         # Position the coin
-        self.center_x = random.randrange(SCREEN_WIDTH)
-        self.center_y = random.randrange(SCREEN_HEIGHT)
+        if start=='center':
+            self.center_x = SCREEN_WIDTH/2
+            self.center_y = SCREEN_HEIGHT/2
+        else: # default is 'random'
+            self.center_x = random.randrange(SCREEN_WIDTH)
+            self.center_y = random.randrange(SCREEN_HEIGHT)
+        
+        # Speed of coins
         self.change_x = random.randrange(-COINS_MAX_SPEED, COINS_MAX_SPEED+1)
         self.change_y = random.randrange(-COINS_MAX_SPEED, COINS_MAX_SPEED+1)
 
@@ -118,7 +130,7 @@ class Coin(arcade.Sprite):
 
 class Ball(arcade.Sprite):
 
-    def __init__(self, filename, sprite_scaling):
+    def __init__(self, filename, sprite_scaling, start='random'):
 
         super().__init__(filename, sprite_scaling)
 
@@ -126,8 +138,14 @@ class Ball(arcade.Sprite):
         self.change_y = 0
 
         # Position the ball
-        self.center_x = random.randrange(SCREEN_WIDTH)
-        self.center_y = random.randrange(SCREEN_HEIGHT)
+        if start=='center':
+            self.center_x = SCREEN_WIDTH/2
+            self.center_y = SCREEN_HEIGHT/2
+        else: # default is 'random'
+            self.center_x = random.randrange(SCREEN_WIDTH)
+            self.center_y = random.randrange(SCREEN_HEIGHT)
+
+
         self.change_x = random.randrange(MIN_BALL_SPEED, MAX_BALL_SPEED)*random.choice([-1,1])
         self.change_y = random.randrange(MIN_BALL_SPEED, MAX_BALL_SPEED)*random.choice([-1,1])
 
@@ -152,14 +170,20 @@ class Ball(arcade.Sprite):
 
 class Player(arcade.Sprite):
 
-    def __init__(self, filename, sprite_scaling):
+    def __init__(self, filename, sprite_scaling, start='center'):
 
         super().__init__(filename, sprite_scaling)
 
-        self.center_x = int(SCREEN_WIDTH / 2)
-        self.center_y = int(SCREEN_HEIGHT / 2)
-        #self.center_x = random.randrange(SCREEN_WIDTH)
-        #self.center_y = random.randrange(SCREEN_HEIGHT)
+        if start=='random_corner':
+            v = [(0,0),(SCREEN_WIDTH,0),(SCREEN_WIDTH,SCREEN_HEIGHT),(0,SCREEN_HEIGHT)]
+            self.center_x,self.center_y = v[random.randrange(len(v))]
+        elif start=='center':
+            self.center_x = random.randrange(SCREEN_WIDTH)
+            self.center_y = random.randrange(SCREEN_HEIGHT)
+        else:
+        # default = 'center'
+            self.center_x = int(SCREEN_WIDTH / 2)
+            self.center_y = int(SCREEN_HEIGHT / 2)
 
         self.change_x = 0
         self.change_y = 0
@@ -167,28 +191,29 @@ class Player(arcade.Sprite):
     def update(self):
         self.center_x += self.change_x
         self.center_y += self.change_y
-        """
-       # Limit player inside window
-        if self.left < 0:
-            self.left = 0
-        elif self.right > SCREEN_WIDTH - 1:
-            self.right = SCREEN_WIDTH - 1
+        
+        border = PLAYER_BORDER
 
-        if self.bottom < 0:
-            self.bottom = 0
-        elif self.top > SCREEN_HEIGHT - 1:
-            self.top = SCREEN_HEIGHT - 1
-        """
+        if border == 'rigid':
+        # Limit player inside window
+            if self.left < 0:
+                self.left = 0
+            elif self.right > SCREEN_WIDTH - 1:
+                self.right = SCREEN_WIDTH - 1
+            if self.bottom < 0:
+                self.bottom = 0
+            elif self.top > SCREEN_HEIGHT - 1:
+                self.top = SCREEN_HEIGHT - 1
+        else: # default = 'torus'
        # Wrap player to other side (toroidal field)
-        if self.center_x < 0:
-            self.center_x = SCREEN_WIDTH - 1
-        elif self.center_x > SCREEN_WIDTH - 1:
-            self.center_x = 0
-
-        if self.center_y < 0:
-            self.center_y = SCREEN_HEIGHT - 1
-        elif self.center_y > SCREEN_HEIGHT - 1:
-            self.center_y = 0
+            if self.center_x < 0:
+                self.center_x = SCREEN_WIDTH - 1
+            elif self.center_x > SCREEN_WIDTH - 1:
+                self.center_x = 0
+            if self.center_y < 0:
+                self.center_y = SCREEN_HEIGHT - 1
+            elif self.center_y > SCREEN_HEIGHT - 1:
+                self.center_y = 0
 
 class MyGame(arcade.Window):
     """ Our custom Window Class"""
@@ -279,7 +304,7 @@ class MyGame(arcade.Window):
         for i in range(COINS_COUNT):
             # Create the coin instance
             # Coin image from kenney.nl
-            coin = Coin("my-images/coin_01.png", SPRITE_SCALING_COIN)
+            coin = Coin("my-images/coin_01.png", SPRITE_SCALING_COIN, start=COINS_START)
             # Add the coin to the lists
             self.all_sprites_list.append(coin)
             self.coin_list.append(coin)
@@ -371,14 +396,15 @@ class MyGame(arcade.Window):
         
     def update_env_get_reward(self):
 
-        reward = -0.5
+        reward = -0.0005
+#        reward = 0
         # Generate a list of coins that collided with the player.
         coin_hit_list = arcade.check_for_collision_with_list(self.player,
                                                              self.coin_list)
         # Loop through each colliding sprite, remove it, and add to the score.
         for coin in coin_hit_list:
             coin.kill()
-            reward += 5
+            reward += 1
         # Kill coins hit by balls
         for ball in self.ball_list:
             coin_hit_list = arcade.check_for_collision_with_list(ball,self.coin_list)
@@ -398,7 +424,7 @@ class MyGame(arcade.Window):
             ball.change_x += np.sign(ball.change_x)
             ball.change_y += np.sign(ball.change_y)
 
-        return reward/1000,len(self.coin_list)<=0
+        return reward,len(self.coin_list)<=0
 
     def get_current_status(self,scaled = False):
         """Get the status of the game as an array of
