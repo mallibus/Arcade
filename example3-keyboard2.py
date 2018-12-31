@@ -540,6 +540,7 @@ class MyGame(arcade.Window):
     def on_update(self, delta_time):
         """ Movement and game logic """
         # If game over saves the history of the game and restarts
+        print("Tempo:", self.timer," Game over:",self.game_over)
         if  self.game_over:
             self.save_history()
             self.learn_something()
