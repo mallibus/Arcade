@@ -45,6 +45,9 @@ class Brain(object):
             self.save_loss(loss_file)
         if len(model_file)>0:
             self.model.save(model_file)
+        # Save inputs and targets for the batch for future analyisis
+        np.savetxt("00in.txt",inputs,delimiter=',')
+        np.savetxt("00target.txt",targets,delimiter=',')
         return loss
 
     def save_loss(self,loss_file):
